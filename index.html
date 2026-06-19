@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniLang - Compiler &amp; Interpreter</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-primary:#1e1e2e;--bg-secondary:#181825;--bg-tertiary:#11111b;
+  --bg-surface:#313244;--bg-hover:#45475a;
+  --text-primary:#cdd6f4;--text-secondary:#a6adc8;--text-muted:#6c7086;
+  --accent:#89b4fa;--accent-hover:#74c7ec;--green:#a6e3a1;--red:#f38ba8;
+  --yellow:#f9e2af;--mauve:#cba6f7;--peach:#fab387;--teal:#94e2d5;
+  --border:#45475a;--font-mono:'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace;
+  --font-sans:'Segoe UI',system-ui,-apple-system,sans-serif;
+}
+html,body{height:100%;overflow:hidden;font-family:var(--font-sans);background:var(--bg-primary);color:var(--text-primary)}
+#app{display:flex;flex-direction:column;height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border);flex-shrink:0}
+header h1{font-size:16px;font-weight:600;color:var(--accent);letter-spacing:0.5px}
+header h1 span{color:var(--text-muted);font-weight:400}
+.toolbar{display:flex;align-items:center;gap:8px}
+.toolbar select,.toolbar button{font-family:var(--font-sans);font-size:12px;padding:5px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg-surface);color:var(--text-primary);cursor:pointer;transition:all .15s}
+.toolbar select:hover,.toolbar button:hover{border-color:var(--accent);background:var(--bg-hover)}
+.toolbar button.run{background:var(--green);color:var(--bg-tertiary);border-color:var(--green);font-weight:600}
+.toolbar button.run:hover{background:#89d889}
+.toolbar button.clear{border-color:var(--red);color:var(--red)}
+.toolbar button.clear:hover{background:var(--red);color:var(--bg-tertiary)}
+.main{display:flex;flex:1;overflow:hidden}
+.editor-panel{display:flex;flex-direction:column;flex:1;min-width:0;border-right:1px solid var(--border)}
+.right-panel{display:flex;flex-direction:column;width:45%;min-width:300px}
+.tabs{display:flex;background:var(--bg-secondary);border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{padding:7px 16px;font-size:12px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-muted);transition:all .15s}
+.tab:hover{color:var(--text-secondary)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{display:none;flex:1;overflow:hidden}
+.tab-content.active{display:flex;flex-direction:column}
+.editor-wrapper{display:flex;flex:1;overflow:hidden;position:relative}
+.line-numbers{padding:12px 8px 12px 12px;text-align:right;color:var(--text-muted);font-family:var(--font-mono);font-size:13px;line-height:1.6;background:var(--bg-secondary);user-select:none;overflow:hidden;min-width:40px}
+#code-editor{flex:1;padding:12px;font-family:var(--font-mono);font-size:13px;line-height:1.6;background:var(--bg-primary);color:var(--text-primary);border:none;outline:none;resize:none;tab-size:2;white-space:pre;overflow:auto}
+#code-editor::selection{background:rgba(137,180,250,0.3)}
+.ast-container,.tokens-container,.output-container{flex:1;overflow:auto;padding:12px;font-family:var(--font-mono);font-size:13px;line-height:1.6}
+.ast-container{background:var(--bg-primary)}
+.tokens-container{background:var(--bg-primary)}
+.output-container{background:var(--bg-tertiary)}
+.output-line{padding:2px 0}
+.output-line.error{color:var(--red)}
+.output-line.info{color:var(--accent)}
+.output-line.success{color:var(--green)}
+.token-table{width:100%;border-collapse:collapse;font-size:12px}
+.token-table th{text-align:left;padding:6px 10px;background:var(--bg-secondary);color:var(--text-secondary);position:sticky;top:0;border-bottom:1px solid var(--border)}
+.token-table td{padding:5px 10px;border-bottom:1px solid var(--border)}
+.token-table tr:hover{background:var(--bg-surface)}
+.token-type{font-weight:600}
+.token-type.keyword{color:var(--mauve)}
+.token-type.identifier{color:var(--text-primary)}
+.token-type.number{color:var(--peach)}
+.token-type.string{color:var(--green)}
+.token-type.operator{color:var(--accent)}
+.token-type.punctuation{color:var(--yellow)}
+.token-type.boolean{color:var(--teal)}
+.ast-node{padding:2px 0}
+.ast-node-header{display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 6px;border-radius:4px;transition:background .1s}
+.ast-node-header:hover{background:var(--bg-surface)}
+.ast-node-type{color:var(--mauve);font-weight:600}
+.ast-node-value{color:var(--peach)}
+.ast-node-children{margin-left:20px;border-left:1px solid var(--border);padding-left:8px}
+.ast-node-key{color:var(--text-muted);font-size:11px}
+.status-bar{display:flex;justify-content:space-between;padding:4px 16px;background:var(--bg-secondary);border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);flex-shrink:0}
+.error-list{padding:8px 12px;max-height:200px;overflow:auto}
+.error-item{display:flex;align-items:center;gap:8px;padding:4px 0;color:var(--red);font-size:12px}
+.error-line-num{color:var(--yellow);font-weight:600;min-width:50px}
+.splitter{background:var(--bg-secondary);flex-shrink:0}
+.splitter-h{width:4px;cursor:col-resize}
+.splitter-v{height:4px;cursor:row-resize}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:var(--bg-tertiary)}
+::-webkit-scrollbar-thumb{background:var(--bg-surface);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--bg-hover)}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <h1>MiniLang <span>&mdash; Compiler &amp; Interpreter</span></h1>
+  <div class="toolbar">
+    <select id="example-select">
+      <option value="">Example Programs</option>
+      <option value="factorial">Factorial</option>
+      <option value="fibonacci">Fibonacci</option>
+      <option value="palindrome">Palindrome</option>
+      <option value="bubble">Bubble Sort</option>
+      <option value="primes">Prime Numbers</option>
+      <option value="fibrec">Fibonacci (Recursive)</option>
+    </select>
+    <button class="run" id="run-btn" title="Run (Ctrl+Enter)">&#9654; Run</button>
+    <button class="clear" id="clear-btn" title="Clear Output">&#10005; Clear</button>
+  </div>
+</header>
+<div class="main">
+  <div class="editor-panel" id="editor-panel">
+    <div class="editor-wrapper">
+      <div class="line-numbers" id="line-numbers"></div>
+      <textarea id="code-editor" spellcheck="false" placeholder="// Write MiniLang code here..."></textarea>
+    </div>
+    <div class="error-list" id="error-list" style="display:none"></div>
+  </div>
+  <div class="splitter splitter-h" id="splitter-h"></div>
+  <div class="right-panel" id="right-panel">
+    <div class="tabs">
+      <div class="tab active" data-tab="ast">AST</div>
+      <div class="tab" data-tab="tokens">Tokens</div>
+      <div class="tab" data-tab="output">Output</div>
+    </div>
+    <div class="tab-content active" id="tab-ast"><div class="ast-container" id="ast-view"></div></div>
+    <div class="tab-content" id="tab-tokens"><div class="tokens-container" id="tokens-view"></div></div>
+    <div class="tab-content" id="tab-output"><div class="output-container" id="output-view"></div></div>
+  </div>
+</div>
+<div class="status-bar">
+  <span id="status-left">Ready</span>
+  <span id="status-right">MiniLang v1.0</span>
+</div>
+</div>
+
+<script>
+// ==================== EXAMPLES ====================
+const EXAMPLES = {
+factorial: `// Factorial
+let n = 10;
+let result = 1;
+let i = 1;
+while (i <= n) {
+  result = result * i;
+  i = i + 1;
+}
+print("Factorial of " + n + " = " + result);`,
+
+fibonacci: `// Fibonacci (iterative)
+let a = 0;
+let b = 1;
+let count = 20;
+let i = 0;
+print("Fibonacci:");
+while (i < count) {
+  print(a);
+  let temp = b;
+  b = a + b;
+  a = temp;
+  i = i + 1;
+}`,
+
+palindrome: `// Palindrome checker
+let str = "racecar";
+let len = 7;
+let isPalin = true;
+let j = 0;
+while (j < len / 2) {
+  if (str[j] != str[len - 1 - j]) {
+    isPalin = false;
+  }
+  j = j + 1;
+}
+if (isPalin == true) {
+  print(str + " is a palindrome");
+} else {
+  print(str + " is not a palindrome");
+}`,
+
+bubble: `// Bubble Sort
+let arr = [5, 3, 8, 1, 2];
+let n = 5;
+let i = 0;
+while (i < n) {
+  let j = 0;
+  while (j < n - 1) {
+    if (arr[j] > arr[j + 1]) {
+      let temp = arr[j];
+      arr[j] = arr[j + 1];
+      arr[j + 1] = temp;
+    }
+    j = j + 1;
+  }
+  i = i + 1;
+}
+print("Sorted:");
+let k = 0;
+while (k < n) {
+  print(arr[k]);
+  k = k + 1;
+}`,
+
+primes: `// Prime number generator
+let limit = 50;
+let num = 2;
+while (num <= limit) {
+  let isPrime = true;
+  let d = 2;
+  while (d * d <= num) {
+    if (num % d == 0) {
+      isPrime = false;
+    }
+    d = d + 1;
+  }
+  if (isPrime == true) {
+    print(num);
+  }
+  num = num + 1;
+}`,
+
+fibrec: `// Fibonacci recursive
+function fib(n) {
+  if (n <= 1) {
+    return n;
+  }
+  return fib(n - 1) + fib(n - 2);
+}
+let i = 0;
+while (i < 15) {
+  print("fib(" + i + ") = " + fib(i));
+  i = i + 1;
+}`
+};
+
+// ==================== LEXER ====================
+const TT = {
+  NUMBER:'NUMBER',STRING:'STRING',IDENTIFIER:'IDENTIFIER',
+  LET:'LET',PRINT:'PRINT',IF:'IF',ELSE:'ELSE',WHILE:'WHILE',
+  FOR:'FOR',FUNCTION:'FUNCTION',RETURN:'RETURN',TRUE:'TRUE',FALSE:'FALSE',
+  PLUS:'PLUS',MINUS:'MINUS',STAR:'STAR',SLASH:'SLASH',PERCENT:'PERCENT',
+  EQ:'EQ',NEQ:'NEQ',LT:'LT',GT:'GT',LTE:'LTE',GTE:'GTE',
+  ASSIGN:'ASSIGN',LPAREN:'LPAREN',RPAREN:'RPAREN',LBRACE:'LBRACE',RBRACE:'RBRACE',
+  LBRACKET:'LBRACKET',RBRACKET:'RBRACKET',
+  COMMA:'COMMA',SEMICOLON:'SEMICOLON',COLON:'COLON',
+  EOF:'EOF',NEWLINE:'NEWLINE',
+  PLUS_ASSIGN:'PLUS_ASSIGN',MINUS_ASSIGN:'MINUS_ASSIGN',
+  STAR_ASSIGN:'STAR_ASSIGN',SLASH_ASSIGN:'SLASH_ASSIGN',
+  DOT:'DOT'
+};
+
+const KEYWORDS = {
+  'let':TT.LET,'print':TT.PRINT,'if':TT.IF,'else':TT.ELSE,
+  'while':TT.WHILE,'for':TT.FOR,'function':TT.FUNCTION,'return':TT.RETURN,
+  'true':TT.TRUE,'false':TT.FALSE
+};
+
+class Lexer {
+  constructor(input) {
+    this.input = input;
+    this.pos = 0;
+    this.line = 1;
+    this.col = 1;
+    this.tokens = [];
+    this.errors = [];
+  }
+
+  peek() { return this.pos < this.input.length ? this.input[this.pos] : null; }
+  advance() {
+    const ch = this.input[this.pos];
+    this.pos++;
+    if (ch === '\n') { this.line++; this.col = 1; } else { this.col++; }
+    return ch;
+  }
+
+  skipWhitespace() {
+    while (this.pos < this.input.length) {
+      const ch = this.input[this.pos];
+      if (ch === ' ' || ch === '\t' || ch === '\r') { this.advance(); }
+      else if (ch === '\n') { this.advance(); }
+      else { break; }
+    }
+  }
+
+  skipComment() {
+    if (this.pos + 1 < this.input.length && this.input[this.pos] === '/' && this.input[this.pos+1] === '/') {
+      while (this.pos < this.input.length && this.input[this.pos] !== '\n') { this.advance(); }
+      return true;
+    }
+    if (this.pos + 1 < this.input.length && this.input[this.pos] === '/' && this.input[this.pos+1] === '*') {
+      this.advance(); this.advance();
+      while (this.pos + 1 < this.input.length) {
+        if (this.input[this.pos] === '*' && this.input[this.pos+1] === '/') { this.advance(); this.advance(); return true; }
+        this.advance();
+      }
+      this.errors.push({line:this.line,col:this.col,message:'Unterminated block comment'});
+      return true;
+    }
+    return false;
+  }
+
+  readNumber() {
+    let num = '';
+    const startCol = this.col;
+    while (this.pos < this.input.length && /[0-9.]/.test(this.input[this.pos])) {
+      if (this.input[this.pos] === '.' && num.includes('.')) break;
+      num += this.advance();
+    }
+    return {type:TT.NUMBER,value:num,line:this.line,col:startCol};
+  }
+
+  readString(quote) {
+    const startLine = this.line;
+    const startCol = this.col;
+    this.advance(); // consume opening quote
+    let str = '';
+    while (this.pos < this.input.length && this.input[this.pos] !== quote) {
+      if (this.input[this.pos] === '\\') {
+        this.advance();
+        const esc = this.advance();
+        if (esc === 'n') str += '\n';
+        else if (esc === 't') str += '\t';
+        else if (esc === '\\') str += '\\';
+        else if (esc === quote) str += quote;
+        else str += esc;
+      } else {
+        str += this.advance();
+      }
+    }
+    if (this.pos >= this.input.length) {
+      this.errors.push({line:startLine,col:startCol,message:'Unterminated string'});
+      return {type:TT.STRING,value:str,line:startLine,col:startCol};
+    }
+    this.advance(); // consume closing quote
+    return {type:TT.STRING,value:str,line:startLine,col:startCol};
+  }
+
+  readIdentifier() {
+    let id = '';
+    const startCol = this.col;
+    while (this.pos < this.input.length && /[a-zA-Z0-9_]/.test(this.input[this.pos])) {
+      id += this.advance();
+    }
+    const type = KEYWORDS[id] || TT.IDENTIFIER;
+    return {type,value:id,line:this.line,col:startCol};
+  }
+
+  tokenize() {
+    while (this.pos < this.input.length) {
+      this.skipWhitespace();
+      if (this.pos >= this.input.length) break;
+      if (this.skipComment()) continue;
+      const ch = this.input[this.pos];
+      const ln = this.line, cl = this.col;
+      if (/[0-9]/.test(ch)) { this.tokens.push(this.readNumber()); continue; }
+      if (ch === '"' || ch === "'") { this.tokens.push(this.readString(ch)); continue; }
+      if (/[a-zA-Z_]/.test(ch)) { this.tokens.push(this.readIdentifier()); continue; }
+      this.advance();
+      switch(ch) {
+        case '+':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.PLUS_ASSIGN,value:'+=',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.PLUS,value:'+',line:ln,col:cl});
+          break;
+        case '-':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.MINUS_ASSIGN,value:'-=',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.MINUS,value:'-',line:ln,col:cl});
+          break;
+        case '*':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.STAR_ASSIGN,value:'*=',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.STAR,value:'*',line:ln,col:cl});
+          break;
+        case '/':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.SLASH_ASSIGN,value:'/=',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.SLASH,value:'/',line:ln,col:cl});
+          break;
+        case '%': this.tokens.push({type:TT.PERCENT,value:'%',line:ln,col:cl}); break;
+        case '=':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.EQ,value:'==',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.ASSIGN,value:'=',line:ln,col:cl});
+          break;
+        case '!':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.NEQ,value:'!=',line:ln,col:cl}); }
+          else this.errors.push({line:ln,col:cl,message:"Unexpected character '!' (did you mean '!='?)"});
+          break;
+        case '<':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.LTE,value:'<=',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.LT,value:'<',line:ln,col:cl});
+          break;
+        case '>':
+          if (this.peek() === '=') { this.advance(); this.tokens.push({type:TT.GTE,value:'>=',line:ln,col:cl}); }
+          else this.tokens.push({type:TT.GT,value:'>',line:ln,col:cl});
+          break;
+        case '(': this.tokens.push({type:TT.LPAREN,value:'(',line:ln,col:cl}); break;
+        case ')': this.tokens.push({type:TT.RPAREN,value:')',line:ln,col:cl}); break;
+        case '{': this.tokens.push({type:TT.LBRACE,value:'{',line:ln,col:cl}); break;
+        case '}': this.tokens.push({type:TT.RBRACE,value:'}',line:ln,col:cl}); break;
+        case '[': this.tokens.push({type:TT.LBRACKET,value:'[',line:ln,col:cl}); break;
+        case ']': this.tokens.push({type:TT.RBRACKET,value:']',line:ln,col:cl}); break;
+        case ',': this.tokens.push({type:TT.COMMA,value:',',line:ln,col:cl}); break;
+        case ';': this.tokens.push({type:TT.SEMICOLON,value:';',line:ln,col:cl}); break;
+        case ':': this.tokens.push({type:TT.COLON,value:':',line:ln,col:cl}); break;
+        case '.': this.tokens.push({type:TT.DOT,value:'.',line:ln,col:cl}); break;
+        default:
+          this.errors.push({line:ln,col:cl,message:`Unexpected character '${ch}'`});
+      }
+    }
+    this.tokens.push({type:TT.EOF,value:null,line:this.line,col:this.col});
+    return {tokens:this.tokens,errors:this.errors};
+  }
+}
+
+// ==================== AST NODES ====================
+const AST = {
+  Program(body) { return {type:'Program',body}; },
+  VarDeclaration(name,init) { return {type:'VarDeclaration',name,init}; },
+  Assignment(target,value) { return {type:'Assignment',target,value}; },
+  IndexedAssignment(target,index,value) { return {type:'IndexedAssignment',target,index,value}; },
+  FuncDeclaration(name,params,body) { return {type:'FuncDeclaration',name,params,body}; },
+  ReturnStatement(argument) { return {type:'ReturnStatement',argument}; },
+  IfStatement(condition,consequent,alternate) { return {type:'IfStatement',condition,consequent,alternate}; },
+  WhileStatement(condition,body) { return {type:'WhileStatement',condition,body}; },
+  ForStatement(init,condition,update,body) { return {type:'ForStatement',init,condition,update,body}; },
+  PrintStatement(args) { return {type:'PrintStatement',args}; },
+  Block(body) { return {type:'Block',body}; },
+  BinaryExpression(op,left,right) { return {type:'BinaryExpression',op,left,right}; },
+  UnaryExpression(op,argument) { return {type:'UnaryExpression',op,argument}; },
+  NumberLiteral(value) { return {type:'NumberLiteral',value}; },
+  StringLiteral(value) { return {type:'StringLiteral',value}; },
+  BooleanLiteral(value) { return {type:'BooleanLiteral',value}; },
+  Identifier(name) { return {type:'Identifier',name}; },
+  ArrayLiteral(elements) { return {type:'ArrayLiteral',elements}; },
+  IndexedExpression(object,index) { return {type:'IndexedExpression',object,index}; },
+  FunctionCall(name,args) { return {type:'FunctionCall',name,args}; },
+};
+
+// ==================== PARSER ====================
+class Parser {
+  constructor(tokens) {
+    this.tokens = tokens;
+    this.pos = 0;
+    this.errors = [];
+  }
+
+  peek() { return this.tokens[this.pos]; }
+  advance() { const t = this.tokens[this.pos]; this.pos++; return t; }
+
+  expect(type) {
+    const t = this.peek();
+    if (t.type !== type) {
+      this.errors.push({line:t.line,col:t.col,message:`Expected ${type}, got ${t.type} ('${t.value}')`});
+      throw new Error('Parse error');
+    }
+    return this.advance();
+  }
+
+  match(type) {
+    if (this.peek().type === type) return this.advance();
+    return null;
+  }
+
+  parse() {
+    try {
+      const body = this.parseBlock(true);
+      const program = AST.Program(body);
+      if (this.peek().type !== TT.EOF) {
+        const t = this.peek();
+        this.errors.push({line:t.line,col:t.col,message:`Unexpected token '${t.value || t.type}'`});
+      }
+      return {ast:program,errors:this.errors};
+    } catch(e) {
+      return {ast:null,errors:this.errors};
+    }
+  }
+
+  parseBlock(isTopLevel) {
+    const body = [];
+    while (this.peek().type !== TT.EOF && (isTopLevel || this.peek().type !== TT.RBRACE)) {
+      const stmt = this.parseStatement();
+      if (stmt) body.push(stmt);
+    }
+    if (!isTopLevel) this.expect(TT.RBRACE);
+    return body;
+  }
+
+  parseStatement() {
+    const t = this.peek();
+    switch(t.type) {
+      case TT.LET: return this.parseVarDecl();
+      case TT.PRINT: return this.parsePrint();
+      case TT.IF: return this.parseIf();
+      case TT.WHILE: return this.parseWhile();
+      case TT.FOR: return this.parseFor();
+      case TT.FUNCTION: return this.parseFuncDecl();
+      case TT.RETURN: return this.parseReturn();
+      case TT.LBRACE: return this.parseBlockStatement();
+      default: return this.parseExpressionStatement();
+    }
+  }
+
+  parseVarDecl() {
+    this.expect(TT.LET);
+    const name = this.expect(TT.IDENTIFIER).value;
+    this.expect(TT.ASSIGN);
+    const init = this.parseExpression();
+    this.match(TT.SEMICOLON);
+    return AST.VarDeclaration(name,init);
+  }
+
+  parsePrint() {
+    this.expect(TT.PRINT);
+    this.expect(TT.LPAREN);
+    const args = [];
+    if (this.peek().type !== TT.RPAREN) {
+      args.push(this.parseExpression());
+      while (this.match(TT.COMMA)) args.push(this.parseExpression());
+    }
+    this.expect(TT.RPAREN);
+    this.match(TT.SEMICOLON);
+    return AST.PrintStatement(args);
+  }
+
+  parseIf() {
+    this.expect(TT.IF);
+    this.expect(TT.LPAREN);
+    const condition = this.parseExpression();
+    this.expect(TT.RPAREN);
+    const consequent = this.parseBlockStatement();
+    let alternate = null;
+    if (this.match(TT.ELSE)) {
+      if (this.peek().type === TT.IF) alternate = this.parseIf();
+      else alternate = this.parseBlockStatement();
+    }
+    return AST.IfStatement(condition,consequent,alternate);
+  }
+
+  parseWhile() {
+    this.expect(TT.WHILE);
+    this.expect(TT.LPAREN);
+    const condition = this.parseExpression();
+    this.expect(TT.RPAREN);
+    const body = this.parseBlockStatement();
+    return AST.WhileStatement(condition,body);
+  }
+
+  parseFor() {
+    this.expect(TT.FOR);
+    this.expect(TT.LPAREN);
+    let init = null;
+    if (this.peek().type === TT.LET) init = this.parseVarDecl();
+    else if (this.peek().type !== TT.SEMICOLON) init = this.parseExpressionStatement();
+    else this.advance();
+    const condition = this.peek().type === TT.SEMICOLON ? AST.BooleanLiteral(true) : this.parseExpression();
+    this.match(TT.SEMICOLON);
+    let update = null;
+    if (this.peek().type !== TT.RPAREN) update = this.parseExpression();
+    this.expect(TT.RPAREN);
+    const body = this.parseBlockStatement();
+    return AST.ForStatement(init,condition,update,body);
+  }
+
+  parseFuncDecl() {
+    this.expect(TT.FUNCTION);
+    const name = this.expect(TT.IDENTIFIER).value;
+    this.expect(TT.LPAREN);
+    const params = [];
+    if (this.peek().type !== TT.RPAREN) {
+      params.push(this.expect(TT.IDENTIFIER).value);
+      while (this.match(TT.COMMA)) params.push(this.expect(TT.IDENTIFIER).value);
+    }
+    this.expect(TT.RPAREN);
+    const body = this.parseBlockStatement();
+    return AST.FuncDeclaration(name,params,body);
+  }
+
+  parseReturn() {
+    this.expect(TT.RETURN);
+    let argument = null;
+    if (this.peek().type !== TT.SEMICOLON && this.peek().type !== TT.RBRACE) {
+      argument = this.parseExpression();
+    }
+    this.match(TT.SEMICOLON);
+    return AST.ReturnStatement(argument);
+  }
+
+  parseBlockStatement() {
+    this.expect(TT.LBRACE);
+    return AST.Block(this.parseBlock(false));
+  }
+
+  parseExpressionStatement() {
+    const expr = this.parseExpression();
+    this.match(TT.SEMICOLON);
+    return expr;
+  }
+
+  // Expression parsing with Pratt precedence
+  parseExpression() { return this.parseAssignment(); }
+
+  parseAssignment() {
+    let left = this.parseTernary();
+    const t = this.peek();
+    if (t.type === TT.ASSIGN || t.type === TT.PLUS_ASSIGN || t.type === TT.MINUS_ASSIGN ||
+        t.type === TT.STAR_ASSIGN || t.type === TT.SLASH_ASSIGN) {
+      this.advance();
+      const right = this.parseAssignment();
+      if (left.type === 'Identifier') {
+        return AST.Assignment(left, right);
+      } else if (left.type === 'IndexedExpression') {
+        return AST.IndexedAssignment(left.object, left.index, right);
+      }
+      const op = t.value;
+      const bin = AST.BinaryExpression(op === '=' ? '=' : op[0], left, right);
+      return AST.Assignment(left, bin);
+    }
+    return left;
+  }
+
+  parseTernary() {
+    let cond = this.parseLogicalOr();
+    if (this.peek().type === TT.COLON) {
+      this.advance();
+      const alt = this.parseTernary();
+      return AST.IfStatement(cond, AST.Block([alt]), null);
+    }
+    return cond;
+  }
+
+  parseLogicalOr() {
+    let left = this.parseLogicalAnd();
+    while (this.peek().type === TT.IDENTIFIER && this.peek().value === 'or') {
+      const op = this.advance().value;
+      const right = this.parseLogicalAnd();
+      left = AST.BinaryExpression(op, left, right);
+    }
+    return left;
+  }
+
+  parseLogicalAnd() {
+    let left = this.parseComparison();
+    while (this.peek().type === TT.IDENTIFIER && this.peek().value === 'and') {
+      const op = this.advance().value;
+      const right = this.parseComparison();
+      left = AST.BinaryExpression(op, left, right);
+    }
+    return left;
+  }
+
+  parseComparison() {
+    let left = this.parseAddSub();
+    while ([TT.EQ,TT.NEQ,TT.LT,TT.GT,TT.LTE,TT.GTE].includes(this.peek().type)) {
+      const op = this.advance().value;
+      const right = this.parseAddSub();
+      left = AST.BinaryExpression(op, left, right);
+    }
+    return left;
+  }
+
+  parseAddSub() {
+    let left = this.parseMulDiv();
+    while (this.peek().type === TT.PLUS || this.peek().type === TT.MINUS) {
+      const op = this.advance().value;
+      const right = this.parseMulDiv();
+      left = AST.BinaryExpression(op, left, right);
+    }
+    return left;
+  }
+
+  parseMulDiv() {
+    let left = this.parseUnary();
+    while ([TT.STAR,TT.SLASH,TT.PERCENT].includes(this.peek().type)) {
+      const op = this.advance().value;
+      const right = this.parseUnary();
+      left = AST.BinaryExpression(op, left, right);
+    }
+    return left;
+  }
+
+  parseUnary() {
+    if (this.peek().type === TT.MINUS) {
+      this.advance();
+      return AST.UnaryExpression('-', this.parseUnary());
+    }
+    if (this.peek().type === TT.IDENTIFIER && this.peek().value === 'not') {
+      this.advance();
+      return AST.UnaryExpression('not', this.parseUnary());
+    }
+    return this.parseCall();
+  }
+
+  parseCall() {
+    let expr = this.parsePrimary();
+    while (true) {
+      if (this.peek().type === TT.LPAREN) {
+        this.advance();
+        const args = [];
+        if (this.peek().type !== TT.RPAREN) {
+          args.push(this.parseExpression());
+          while (this.match(TT.COMMA)) args.push(this.parseExpression());
+        }
+        this.expect(TT.RPAREN);
+        if (expr.type === 'Identifier') {
+          expr = AST.FunctionCall(expr.name, args);
+        } else {
+          this.errors.push({line:expr.line||0,col:expr.col||0,message:'Invalid function call target'});
+        }
+      } else if (this.peek().type === TT.LBRACKET) {
+        this.advance();
+        const index = this.parseExpression();
+        this.expect(TT.RBRACKET);
+        expr = AST.IndexedExpression(expr, index);
+      } else break;
+    }
+    return expr;
+  }
+
+  parsePrimary() {
+    const t = this.peek();
+    switch(t.type) {
+      case TT.NUMBER:
+        this.advance();
+        return AST.NumberLiteral(parseFloat(t.value));
+      case TT.STRING:
+        this.advance();
+        return AST.StringLiteral(t.value);
+      case TT.TRUE:
+        this.advance();
+        return AST.BooleanLiteral(true);
+      case TT.FALSE:
+        this.advance();
+        return AST.BooleanLiteral(false);
+      case TT.IDENTIFIER:
+        this.advance();
+        return AST.Identifier(t.value);
+      case TT.LPAREN: {
+        this.advance();
+        const expr = this.parseExpression();
+        this.expect(TT.RPAREN);
+        return expr;
+      }
+      case TT.LBRACKET: {
+        this.advance();
+        const elements = [];
+        if (this.peek().type !== TT.RBRACKET) {
+          elements.push(this.parseExpression());
+          while (this.match(TT.COMMA)) elements.push(this.parseExpression());
+        }
+        this.expect(TT.RBRACKET);
+        return AST.ArrayLiteral(elements);
+      }
+      default:
+        this.errors.push({line:t.line,col:t.col,message:`Unexpected token '${t.value || t.type}'`});
+        throw new Error('Parse error');
+    }
+  }
+}
+
+// ==================== INTERPRETER ====================
+class RuntimeError extends Error {
+  constructor(message,line) { super(message); this.line = line; }
+}
+
+class ReturnSignal extends Error {
+  constructor(value) { super(); this.value = value; }
+}
+
+class Interpreter {
+  constructor(outputFn) {
+    this.output = outputFn;
+    this.globals = {};
+    this.functions = {};
+  }
+
+  run(ast) {
+    this.executeBlock(ast.body, this.globals);
+  }
+
+  executeBlock(statements, env) {
+    for (const stmt of statements) {
+      this.execute(stmt, env);
+    }
+  }
+
+  execute(node, env) {
+    switch(node.type) {
+      case 'VarDeclaration':
+        env[node.name] = this.evaluate(node.init, env);
+        break;
+      case 'Assignment':
+        if (env === this.globals || node.target.name in env) {
+          env[node.target.name] = this.evaluate(node.value, env);
+        } else {
+          this.globals[node.target.name] = this.evaluate(node.value, env);
+        }
+        break;
+      case 'IndexedAssignment': {
+        const obj = this.evaluate(node.target, env);
+        const idx = this.evaluate(node.index, env);
+        const val = this.evaluate(node.value, env);
+        if (Array.isArray(obj)) obj[Math.floor(idx)] = val;
+        else throw new RuntimeError(`Cannot index into non-array`, node.line);
+        break;
+      }
+      case 'FuncDeclaration':
+        this.functions[node.name] = {params:node.params,body:node.body,closure:{...env}};
+        break;
+      case 'ReturnStatement':
+        throw new ReturnSignal(node.argument ? this.evaluate(node.argument, env) : null);
+      case 'IfStatement': {
+        const cond = this.evaluate(node.condition, env);
+        if (this.isTruthy(cond)) this.executeBlock(node.consequent.body, env);
+        else if (node.alternate) {
+          if (node.alternate.type === 'Block') this.executeBlock(node.alternate.body, env);
+          else this.execute(node.alternate, env);
+        }
+        break;
+      }
+      case 'WhileStatement': {
+        let count = 0;
+        while (this.isTruthy(this.evaluate(node.condition, env))) {
+          this.executeBlock(node.body.body, env);
+          if (++count > 100000) throw new RuntimeError('Maximum loop iterations exceeded', node.line);
+        }
+        break;
+      }
+      case 'ForStatement': {
+        const loopEnv = {...env};
+        if (node.init) this.execute(node.init, loopEnv);
+        let count = 0;
+        while (this.isTruthy(this.evaluate(node.condition, loopEnv))) {
+          this.executeBlock(node.body.body, loopEnv);
+          if (node.update) this.evaluate(node.update, loopEnv);
+          if (++count > 100000) throw new RuntimeError('Maximum loop iterations exceeded', node.line);
+        }
+        // Write loop-scoped vars back
+        Object.assign(env, loopEnv);
+        break;
+      }
+      case 'PrintStatement': {
+        const values = node.args.map(a => this.stringify(this.evaluate(a, env)));
+        this.output(values.join(' '));
+        break;
+      }
+      case 'BinaryExpression':
+      case 'UnaryExpression':
+      case 'NumberLiteral':
+      case 'StringLiteral':
+      case 'BooleanLiteral':
+      case 'Identifier':
+      case 'FunctionCall':
+      case 'ArrayLiteral':
+      case 'IndexedExpression':
+        this.evaluate(node, env); // expression statement
+        break;
+      case 'Block':
+        this.executeBlock(node.body, env);
+        break;
+      default:
+        throw new RuntimeError(`Unknown node type: ${node.type}`, node.line);
+    }
+  }
+
+  evaluate(node, env) {
+    switch(node.type) {
+      case 'NumberLiteral': return node.value;
+      case 'StringLiteral': return node.value;
+      case 'BooleanLiteral': return node.value;
+      case 'ArrayLiteral': return node.elements.map(e => this.evaluate(e, env));
+      case 'Identifier':
+        if (node.name in env) return env[node.name];
+        if (node.name in this.globals) return this.globals[node.name];
+        throw new RuntimeError(`Undefined variable '${node.name}'`, node.line);
+      case 'IndexedExpression': {
+        const obj = this.evaluate(node.object, env);
+        const idx = this.evaluate(node.index, env);
+        if (Array.isArray(obj)) {
+          if (idx < 0 || idx >= obj.length) throw new RuntimeError(`Array index out of bounds: ${idx}`, node.line);
+          return obj[Math.floor(idx)];
+        }
+        throw new RuntimeError(`Cannot index into non-array`, node.line);
+      }
+      case 'BinaryExpression': {
+        // Handle string concatenation
+        if (node.op === '+') {
+          const l = this.evaluate(node.left, env);
+          const r = this.evaluate(node.right, env);
+          if (typeof l === 'string' || typeof r === 'string') return this.stringify(l) + this.stringify(r);
+          return l + r;
+        }
+        const left = this.evaluate(node.left, env);
+        const right = this.evaluate(node.right, env);
+        switch(node.op) {
+          case '-': return left - right;
+          case '*': return left * right;
+          case '/':
+            if (right === 0) throw new RuntimeError('Division by zero', node.line);
+            return left / right;
+          case '%': return left % right;
+          case '==': return left === right;
+          case '!=': return left !== right;
+          case '<': return left < right;
+          case '>': return left > right;
+          case '<=': return left <= right;
+          case '>=': return left >= right;
+          case 'and': return this.isTruthy(left) && this.isTruthy(right);
+          case 'or': return this.isTruthy(left) || this.isTruthy(right);
+          default: throw new RuntimeError(`Unknown operator '${node.op}'`, node.line);
+        }
+      }
+      case 'UnaryExpression': {
+        const arg = this.evaluate(node.argument, env);
+        if (node.op === '-') return -arg;
+        if (node.op === 'not') return !this.isTruthy(arg);
+        throw new RuntimeError(`Unknown unary operator '${node.op}'`, node.line);
+      }
+      case 'FunctionCall': {
+        const func = this.functions[node.name];
+        if (!func) throw new RuntimeError(`Undefined function '${node.name}'`, node.line);
+        if (node.args.length !== func.params.length) {
+          throw new RuntimeError(`${node.name}() expects ${func.params.length} args, got ${node.args.length}`, node.line);
+        }
+        const funcEnv = {...func.closure};
+        func.params.forEach((p,i) => funcEnv[p] = this.evaluate(node.args[i], env));
+        try {
+          this.executeBlock(func.body.body, funcEnv);
+          return null;
+        } catch(e) {
+          if (e instanceof ReturnSignal) return e.value;
+          throw e;
+        }
+      }
+      default:
+        throw new RuntimeError(`Unknown node type: ${node.type}`, node.line);
+    }
+  }
+
+  isTruthy(v) { return v !== null && v !== undefined && v !== false && v !== 0 && v !== ''; }
+  stringify(v) {
+    if (v === null || v === undefined) return 'null';
+    if (typeof v === 'boolean') return v.toString();
+    if (Array.isArray(v)) return '[' + v.map(x => this.stringify(x)).join(', ') + ']';
+    return String(v);
+  }
+}
+
+// ==================== AST VISUALIZATION ====================
+function renderAST(node, depth = 0) {
+  if (!node || typeof node !== 'object') return '';
+  if (Array.isArray(node)) return node.map(n => renderAST(n, depth)).join('');
+  if (!node.type) return '';
+
+  let html = '<div class="ast-node">';
+  let details = [];
+  let children = [];
+
+  switch(node.type) {
+    case 'Program': children = node.body; break;
+    case 'VarDeclaration':
+      details.push(`<span class="ast-node-key">name:</span> <span class="ast-node-value">${node.name}</span>`);
+      children = [node.init];
+      break;
+    case 'Assignment':
+      details.push(`<span class="ast-node-key">target:</span> <span class="ast-node-value">${node.target.name||'?'}</span>`);
+      children = [node.value];
+      break;
+    case 'IndexedAssignment':
+      details.push(`<span class="ast-node-key">target:</span> <span class="ast-node-value">[]</span>`);
+      children = [node.target, node.index, node.value];
+      break;
+    case 'FuncDeclaration':
+      details.push(`<span class="ast-node-key">name:</span> <span class="ast-node-value">${node.name}</span>`);
+      details.push(`<span class="ast-node-key">params:</span> <span class="ast-node-value">[${node.params.join(', ')}]</span>`);
+      children = [node.body];
+      break;
+    case 'ReturnStatement':
+      if (node.argument) children = [node.argument];
+      break;
+    case 'IfStatement':
+      children = [node.condition, node.consequent];
+      if (node.alternate) children.push(node.alternate);
+      break;
+    case 'WhileStatement':
+      children = [node.condition, node.body];
+      break;
+    case 'ForStatement':
+      if (node.init) children.push(node.init);
+      children.push(node.condition);
+      if (node.update) children.push(node.update);
+      children.push(node.body);
+      break;
+    case 'PrintStatement':
+      children = node.args;
+      break;
+    case 'Block':
+      children = node.body;
+      break;
+    case 'BinaryExpression':
+      details.push(`<span class="ast-node-key">op:</span> <span class="ast-node-value">${node.op}</span>`);
+      children = [node.left, node.right];
+      break;
+    case 'UnaryExpression':
+      details.push(`<span class="ast-node-key">op:</span> <span class="ast-node-value">${node.op}</span>`);
+      children = [node.argument];
+      break;
+    case 'NumberLiteral':
+      details.push(`<span class="ast-node-value">${node.value}</span>`);
+      break;
+    case 'StringLiteral':
+      details.push(`<span class="ast-node-value">"${node.value}"</span>`);
+      break;
+    case 'BooleanLiteral':
+      details.push(`<span class="ast-node-value">${node.value}</span>`);
+      break;
+    case 'Identifier':
+      details.push(`<span class="ast-node-value">${node.name}</span>`);
+      break;
+    case 'ArrayLiteral':
+      children = node.elements;
+      break;
+    case 'IndexedExpression':
+      children = [node.object, node.index];
+      break;
+    case 'FunctionCall':
+      details.push(`<span class="ast-node-value">${node.name}()</span>`);
+      children = node.args;
+      break;
+    default: details.push(`<span class="ast-node-value">${JSON.stringify(node).slice(0,50)}</span>`);
+  }
+
+  const hasChildren = children.length > 0;
+  const childHtml = hasChildren ? children.map(c => renderAST(c, depth+1)).join('') : '';
+
+  html += `<div class="ast-node-header" onclick="this.parentElement.classList.toggle('collapsed')">`;
+  html += `<span class="ast-node-type">${node.type}</span> `;
+  html += details.join(' ');
+  html += `</div>`;
+  if (hasChildren) {
+    html += `<div class="ast-node-children">${childHtml}</div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// ==================== UI CONTROLLER ====================
+const editor = document.getElementById('code-editor');
+const lineNumbers = document.getElementById('line-numbers');
+const astView = document.getElementById('ast-view');
+const tokensView = document.getElementById('tokens-view');
+const outputView = document.getElementById('output-view');
+const errorList = document.getElementById('error-list');
+const statusLeft = document.getElementById('status-left');
+const exampleSelect = document.getElementById('example-select');
+const runBtn = document.getElementById('run-btn');
+const clearBtn = document.getElementById('clear-btn');
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n').length;
+  lineNumbers.innerHTML = Array.from({length:lines}, (_,i) => `<div>${i+1}</div>`).join('');
+}
+
+function addOutput(text, cls = '') {
+  const div = document.createElement('div');
+  div.className = 'output-line ' + cls;
+  div.textContent = text;
+  outputView.appendChild(div);
+  outputView.scrollTop = outputView.scrollHeight;
+}
+
+function clearOutput() {
+  outputView.innerHTML = '';
+  errorList.style.display = 'none';
+  errorList.innerHTML = '';
+}
+
+function showErrors(errors) {
+  if (errors.length === 0) { errorList.style.display = 'none'; return; }
+  errorList.style.display = 'block';
+  errorList.innerHTML = errors.map(e =>
+    `<div class="error-item"><span class="error-line-num">Line ${e.line}:${e.col}</span><span>${e.message}</span></div>`
+  ).join('');
+}
+
+function renderTokens(tokens) {
+  const ttNames = {
+    NUMBER:'Number',STRING:'String',IDENTIFIER:'Identifier',
+    LET:'let',PRINT:'print',IF:'if',ELSE:'else',WHILE:'while',
+    FOR:'for',FUNCTION:'function',RETURN:'return',TRUE:'true',FALSE:'false',
+    PLUS:'+',MINUS:'-',STAR:'*',SLASH:'/',PERCENT:'%',
+    EQ:'==',NEQ:'!=',LT:'<',GT:'>',LTE:'<=',GTE:'>=',
+    ASSIGN:'=',LPAREN:'(',RPAREN:')',LBRACE:'{',RBRACE:'}',
+    LBRACKET:'[',RBRACKET:']',COMMA:',',SEMICOLON:';',COLON:':',EOF:'EOF',
+    PLUS_ASSIGN:'+=',MINUS_ASSIGN:'-=',STAR_ASSIGN:'*=',SLASH_ASSIGN:'/=',DOT:'.'
+  };
+  const typeClass = (t) => {
+    if (['LET','PRINT','IF','ELSE','WHILE','FOR','FUNCTION','RETURN'].includes(t)) return 'keyword';
+    if (['TRUE','FALSE'].includes(t)) return 'boolean';
+    if (t === 'IDENTIFIER') return 'identifier';
+    if (t === 'NUMBER') return 'number';
+    if (t === 'STRING') return 'string';
+    if (['PLUS','MINUS','STAR','SLASH','PERCENT','EQ','NEQ','LT','GT','LTE','GTE','ASSIGN','PLUS_ASSIGN','MINUS_ASSIGN','STAR_ASSIGN','SLASH_ASSIGN'].includes(t)) return 'operator';
+    return 'punctuation';
+  };
+  let html = '<table class="token-table"><thead><tr><th>#</th><th>Type</th><th>Value</th><th>Line</th><th>Col</th></tr></thead><tbody>';
+  tokens.forEach((t,i) => {
+    if (t.type === TT.EOF) return;
+    const cls = typeClass(t.type);
+    const val = t.type === TT.STRING ? `"${t.value}"` : (t.value === null ? '' : t.value);
+    html += `<tr><td>${i+1}</td><td class="token-type ${cls}">${ttNames[t.type]||t.type}</td><td>${val}</td><td>${t.line}</td><td>${t.col}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  tokensView.innerHTML = html;
+}
+
+function run() {
+  clearOutput();
+  const code = editor.value;
+  if (!code.trim()) { addOutput('// No code to run', 'info'); return; }
+  statusLeft.textContent = 'Compiling...';
+
+  // Lex
+  const lexer = new Lexer(code);
+  const {tokens, errors: lexErrors} = lexer.tokenize();
+
+  // Parse
+  const parser = new Parser(tokens);
+  const {ast, errors: parseErrors} = parser.parse();
+
+  const allErrors = [...lexErrors, ...parseErrors];
+  showErrors(allErrors);
+
+  renderTokens(tokens);
+
+  if (!ast) {
+    addOutput(`Parse failed with ${allErrors.length} error(s)`, 'error');
+    statusLeft.textContent = 'Parse error';
+    switchTab('tokens');
+    return;
+  }
+
+  // Render AST
+  astView.innerHTML = renderAST(ast);
+
+  // Interpret
+  try {
+    const interp = new Interpreter((msg) => addOutput(msg));
+    interp.run(ast);
+    addOutput('--- Execution complete ---', 'success');
+    statusLeft.textContent = `Done (${allErrors.length} warnings)`;
+  } catch(e) {
+    if (e instanceof RuntimeError) {
+      addOutput(`Runtime error (line ${e.line}): ${e.message}`, 'error');
+      statusLeft.textContent = 'Runtime error';
+    } else {
+      addOutput(`Internal error: ${e.message}`, 'error');
+      statusLeft.textContent = 'Internal error';
+    }
+  }
+  switchTab('output');
+}
+
+// ==================== TAB SWITCHING ====================
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
+}
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => switchTab(t.dataset.tab));
+});
+
+// ==================== EVENT HANDLERS ====================
+editor.addEventListener('input', updateLineNumbers);
+editor.addEventListener('scroll', () => { lineNumbers.scrollTop = editor.scrollTop; });
+editor.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(editor.selectionEnd);
+    editor.selectionStart = editor.selectionEnd = start + 2;
+    updateLineNumbers();
+  }
+  if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); run(); }
+});
+
+runBtn.addEventListener('click', run);
+clearBtn.addEventListener('click', clearOutput);
+exampleSelect.addEventListener('change', () => {
+  const key = exampleSelect.value;
+  if (EXAMPLES[key]) { editor.value = EXAMPLES[key]; updateLineNumbers(); }
+  exampleSelect.value = '';
+});
+
+// Horizontal splitter
+{
+  const spl = document.getElementById('splitter-h');
+  const editorPanel = document.getElementById('editor-panel');
+  const rightPanel = document.getElementById('right-panel');
+  let dragging = false;
+  spl.addEventListener('mousedown', (e) => { dragging = true; e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const mainRect = document.querySelector('.main').getBoundingClientRect();
+    const w = Math.max(200, Math.min(mainRect.width - 300, e.clientX - mainRect.left));
+    editorPanel.style.flex = 'none';
+    editorPanel.style.width = w + 'px';
+    rightPanel.style.flex = '1';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+}
+
+// Initialize
+editor.value = EXAMPLES.factorial;
+updateLineNumbers();
+statusLeft.textContent = 'Ready — press Run or Ctrl+Enter';
+</script>
+</body>
+</html>
